@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufReader};
@@ -17,7 +16,6 @@ use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio_rustls::{rustls, TlsAcceptor};
-use tracing;
 
 #[derive(Parser)]
 struct Opts {
@@ -53,7 +51,7 @@ async fn process_stream(
     println!("{}", String::from_utf8_lossy(&buffer));
     println!("Reqeust end ----------");
     let c = counter.lock().await;
-    let lc = c.clone();
+    let lc = *c;
     drop(c);
 
     let r = responses.lock().await;
@@ -63,6 +61,9 @@ async fn process_stream(
         r.get(lc % r.len()).unwrap().clone()
     };
     drop(r);
+    let mut c = counter.lock().await;
+    *c += 1;
+    drop(c);
 
     // let response_content = &opts.files[*c];
 
@@ -105,8 +106,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
     let s = generate_simple_self_signed(vec![opts.hostname])?;
     s.cert.pem();
-    std::fs::write("cert.pem", &s.cert.pem())?;
-    std::fs::write("key.pem", &s.key_pair.serialize_pem())?;
+    std::fs::write("cert.pem", s.cert.pem())?;
+    std::fs::write("key.pem", s.key_pair.serialize_pem())?;
     let port = opts.port;
     let addr = format!("0.0.0.0:{port}")
         .to_socket_addrs()?
