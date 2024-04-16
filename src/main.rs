@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use rcgen::generate_simple_self_signed;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use rustls::Stream;
 use rustls_pemfile::{certs, private_key};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_rustls::{rustls, TlsAcceptor};
+use tracing;
 
 fn load_certs(path: &Path) -> io::Result<Vec<CertificateDer<'static>>> {
     certs(&mut BufReader::new(File::open(path)?)).collect()
@@ -25,6 +25,11 @@ fn load_keys(path: &Path) -> io::Result<PrivateKeyDer<'static>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        .json()
+        .with_max_level(tracing::Level::TRACE)
+        .with_current_span(false)
+        .init();
     let s = generate_simple_self_signed(vec!["localhost".to_string()])?;
     s.cert.pem();
     std::fs::write("cert.pem", &s.cert.pem())?;
