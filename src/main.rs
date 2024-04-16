@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use clap::error::Result;
 use clap::Parser;
 use http::StatusCode;
 use rcgen::generate_simple_self_signed;
@@ -41,7 +42,7 @@ async fn process_stream(
     acceptor: TlsAcceptor,
     stream: TcpStream,
     counter: Arc<Mutex<usize>>,
-    responses: Arc<Mutex<Vec<(String, u16)>>>,
+    responses: Arc<Vec<(String, u16)>>,
 ) -> Result<(), Box<dyn Error>> {
     let stream = acceptor.accept(stream).await?;
     let (mut reader, mut writer) = split(stream);
@@ -50,22 +51,17 @@ async fn process_stream(
     println!("Reqeust start ----------");
     println!("{}", String::from_utf8_lossy(&buffer));
     println!("Reqeust end ----------");
-    let c = counter.lock().await;
-    let lc = *c;
-    drop(c);
 
-    let r = responses.lock().await;
-    let (l_r, status) = if r.len() == 0 {
+    let mut c = counter.lock().await;
+
+    let (l_r, status) = if responses.len() == 0 {
         ("Hello".to_string(), 200)
     } else {
-        r.get(lc % r.len()).unwrap().clone()
+        responses.get(*c % responses.len()).unwrap().clone()
     };
-    drop(r);
-    let mut c = counter.lock().await;
+
     *c += 1;
     drop(c);
-
-    // let response_content = &opts.files[*c];
 
     writer.write_all(b"HTTP/1.0 ").await?;
     writer.write_all(format!("{status} ").as_bytes()).await?;
@@ -78,7 +74,6 @@ async fn process_stream(
                 .as_bytes(),
         )
         .await?;
-    // 200
     writer
         .write_all(
             b"\r\n\
@@ -130,7 +125,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map(|p| String::from_utf8_lossy(&std::fs::read(p).unwrap()).to_string())
         .zip(opts.status.into_iter())
         .collect();
-    let responses = Arc::new(Mutex::new(r));
+    let responses = Arc::new(r);
 
     loop {
         let (stream, _) = listener.accept().await?;
